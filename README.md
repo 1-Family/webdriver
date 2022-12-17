@@ -1,4 +1,10 @@
-This project is not maintained and it is effectively abandoned, if you have interest in this code you should probably clone it.
+This package is a fork of @fedesog's version which is no longer maintained.
+The purpose of this fork is to add abilities which are missing in fedesog's version.
+
+NEW CAPABILITIES
+================
+- headless mode
+
 
 webdriver
 =========
@@ -23,6 +29,8 @@ Example:
 --------
 
     chromeDriver := webdriver.NewChromeDriver("/path/to/chromedriver")
+    //to enable headless mode:
+    chromeDriver.Headless = true
     err := chromeDriver.Start()
     if err != nil {
     	log.Println(err)

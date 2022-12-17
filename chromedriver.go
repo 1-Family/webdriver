@@ -30,6 +30,8 @@ type ChromeDriver struct {
 	LogFile string
 	// Start method fails if Chromedriver doesn't start in less than StartTimeout. Default 20s.
 	StartTimeout time.Duration
+	// specifies whether chrome driver should be started in headless mode or not
+	Headless bool
 
 	path    string
 	cmd     *exec.Cmd
@@ -41,6 +43,7 @@ type ChromeDriver struct {
 //of valid-named switches is not validate and is passed as it is.
 //switch silent is removed (output is needed to check if chromedriver started correctly)
 func NewChromeDriver(path string) *ChromeDriver {
+	
 	d := &ChromeDriver{}
 	d.path = path
 	d.Port = 9515
@@ -48,6 +51,8 @@ func NewChromeDriver(path string) *ChromeDriver {
 	d.Threads = 4
 	d.LogPath = "chromedriver.log"
 	d.StartTimeout = 20 * time.Second
+	d.Headless = false
+
 	return d
 }
 
@@ -75,6 +80,9 @@ func (d *ChromeDriver) Start() error {
 	switches = append(switches, "-port="+strconv.Itoa(d.Port))
 	switches = append(switches, "-log-path="+d.LogPath)
 	switches = append(switches, "-http-threads="+strconv.Itoa(d.Threads))
+	if (d.Headless) {
+		switches = append(switches, " -headless")
+	}
 	if d.BaseUrl != "" {
 		switches = append(switches, "-url-base="+d.BaseUrl)
 	}
