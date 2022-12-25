@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
+	//"strconv"
 	"time"
 )
 
@@ -36,6 +36,11 @@ type ChromeDriver struct {
 	path    string
 	cmd     *exec.Cmd
 	logFile *os.File
+}
+
+type ChromeOptions struct {
+	Args       []string `json:"args,omitempty"`
+	Extensions []string `json:"extensions,omitempty"`
 }
 
 //create a new service using chromedriver.
@@ -76,18 +81,24 @@ func (d *ChromeDriver) Start() error {
 	}
 
 	d.url = fmt.Sprintf("http://127.0.0.1:%d%s", d.Port, d.BaseUrl)
-	var switches []string
+	//this is an error in fedesog's implementation, these switches are not supported, this is not the way to pass them
+	/*var switches []string
 	switches = append(switches, "-port="+strconv.Itoa(d.Port))
 	switches = append(switches, "-log-path="+d.LogPath)
 	switches = append(switches, "-http-threads="+strconv.Itoa(d.Threads))
 	if (d.Headless) {
-		switches = append(switches, " -headless")
+		fmt.Println("Setting headless mode!@#")
+		//switches = append(switches, "--headless")
+		//switches = append(switches, "--disable-gpu")
+		//switches = append(switches, "--no-sandbox")
+		switches = append(switches, "start-maximized")
 	}
-	if d.BaseUrl != "" {
-		switches = append(switches, "-url-base="+d.BaseUrl)
-	}
+	//if d.BaseUrl != "" {
+	//	switches = append(switches, "-url-base="+d.BaseUrl)
+	//}
 
-	d.cmd = exec.Command(d.path, switches...)
+	d.cmd = exec.Command(d.path, switches...)*/
+	d.cmd = exec.Command(d.path)
 	stdout, err := d.cmd.StdoutPipe()
 	if err != nil {
 		return errors.New(csferr + err.Error())
@@ -132,8 +143,12 @@ func (d *ChromeDriver) Stop() error {
 }
 
 func (d *ChromeDriver) NewSession(desired, required Capabilities) (*Session, error) {
-	//id, capabs, err := d.newSession(desired, required)
-	//return &Session{id, capabs, d}, err
+	//if we will want to support extenstions in the future, or other options it should be handled herein
+	if (d.Headless) {
+		var chromeOptions ChromeOptions
+		chromeOptions.Args = []string{"--headless", "--disable-gpu"}
+		desired["chromeOptions"] = chromeOptions
+	}
 	session, err := d.newSession(desired, required)
 	if err != nil {
 		return nil, err
