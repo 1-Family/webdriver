@@ -10,8 +10,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	//"strconv"
+	"strconv"
 	"time"
+	"sync"
 )
 
 type ChromeSwitches map[string]interface{}
@@ -43,127 +44,150 @@ type ChromeOptions struct {
 	Extensions []string `json:"extensions,omitempty"`
 }
 
+var initialized bool = false
+var freePortsQueue chan int
+var portsMutex sync.Mutex
+const FIRST_PORT_NUMBER = 9500
+//we want to start chrome one by one, for chrome not to crash
+var chromeMutex sync.Mutex
+
 //create a new service using chromedriver.
 //function returns an error if not supported switches are passed. Actual content
 //of valid-named switches is not validate and is passed as it is.
 //switch silent is removed (output is needed to check if chromedriver started correctly)
-func NewChromeDriver(path string) *ChromeDriver {
-	
-	d := &ChromeDriver{}
-	d.path = path
-	d.Port = 9515
-	d.BaseUrl = ""
-	d.Threads = 4
-	d.LogPath = "chromedriver.log"
-	d.StartTimeout = 20 * time.Second
-	d.Headless = false
+//We want to support a number of chrome drivers running in parallel, so we create each time a new chrome driver
+func NewChromeDriver(path string, maxNumberOfWebdrivers int) ChromeDriver {
+	fmt.Println("Requesting new session")
+	portsMutex.Lock()
+	if !initialized {
+		initialized = true
+		freePortsQueue = make(chan int, maxNumberOfWebdrivers)
+		for portNumber:=FIRST_PORT_NUMBER; portNumber<FIRST_PORT_NUMBER+maxNumberOfWebdrivers; portNumber++ {
+			freePortsQueue <- portNumber
+		}
+	}
+	portsMutex.Unlock()
+	chromeDriver := ChromeDriver{}
+	chromeDriver.path = path
+	chromeDriver.Port = <- freePortsQueue
+	fmt.Println("Recieved port")
+	chromeDriver.BaseUrl = ""
+	chromeDriver.Threads = 4
+	chromeDriver.LogPath = "chromedriver.log"
+	chromeDriver.StartTimeout = 20 * time.Second
+	chromeDriver.Headless = false
 
-	return d
+	return chromeDriver
 }
 
 var switchesFormat = "-port=%d -url-base=%s -log-path=%s -http-threads=%d"
 
 var cmdchan = make(chan error)
 
-func (d *ChromeDriver) Start() error {
+func (chromeDriver *ChromeDriver) Start() error {
+	chromeMutex.Lock()
+	defer chromeMutex.Unlock()
+	fmt.Println("Starting new chrome driver")
 	csferr := "chromedriver start failed: "
-	if d.cmd != nil {
+	if chromeDriver.cmd != nil {
 		return errors.New(csferr + "chromedriver already running")
 	}
 
-	if d.LogPath != "" {
+	if chromeDriver.LogPath != "" {
 		//check if log-path is writable
-		file, err := os.OpenFile(d.LogPath, os.O_WRONLY|os.O_CREATE, 0664)
+		file, err := os.OpenFile(chromeDriver.LogPath, os.O_WRONLY|os.O_CREATE, 0664)
 		if err != nil {
 			return errors.New(csferr + "unable to write in log path: " + err.Error())
 		}
 		file.Close()
 	}
 
-	d.url = fmt.Sprintf("http://127.0.0.1:%d%s", d.Port, d.BaseUrl)
+	chromeDriver.url = fmt.Sprintf("http://127.0.0.1:%d%s", chromeDriver.Port, chromeDriver.BaseUrl)
 	//this is an error in fedesog's implementation, these switches are not supported, this is not the way to pass them
-	/*var switches []string
-	switches = append(switches, "-port="+strconv.Itoa(d.Port))
-	switches = append(switches, "-log-path="+d.LogPath)
-	switches = append(switches, "-http-threads="+strconv.Itoa(d.Threads))
-	if (d.Headless) {
-		fmt.Println("Setting headless mode!@#")
-		//switches = append(switches, "--headless")
-		//switches = append(switches, "--disable-gpu")
-		//switches = append(switches, "--no-sandbox")
-		switches = append(switches, "start-maximized")
-	}
-	//if d.BaseUrl != "" {
-	//	switches = append(switches, "-url-base="+d.BaseUrl)
-	//}
+	var switches []string
+	switches = append(switches, "--port="+strconv.Itoa(chromeDriver.Port))
+	switches = append(switches, "--log-path="+chromeDriver.LogPath)
+	switches = append(switches, "--http-threads="+strconv.Itoa(chromeDriver.Threads))
+	switches = append(switches, "--disable-dev-shm-usage"+strconv.Itoa(chromeDriver.Threads))
 
-	d.cmd = exec.Command(d.path, switches...)*/
-	d.cmd = exec.Command(d.path)
-	stdout, err := d.cmd.StdoutPipe()
+	chromeDriver.cmd = exec.Command(chromeDriver.path, switches...)
+	//chromeDriver.cmd = exec.Command(chromeDriver.path)
+	stdout, err := chromeDriver.cmd.StdoutPipe()
 	if err != nil {
 		return errors.New(csferr + err.Error())
 	}
-	stderr, err := d.cmd.StderrPipe()
+	stderr, err := chromeDriver.cmd.StderrPipe()
 	if err != nil {
 		return errors.New(csferr + err.Error())
 	}
-	if err := d.cmd.Start(); err != nil {
+	if err := chromeDriver.cmd.Start(); err != nil {
 		return errors.New(csferr + err.Error())
 	}
-	if d.LogFile != "" {
+	if chromeDriver.LogFile != "" {
 		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-		d.logFile, err = os.OpenFile(d.LogFile, flags, 0640)
+		chromeDriver.logFile, err = os.OpenFile(chromeDriver.LogFile, flags, 0640)
 		if err != nil {
 			return err
 		}
-		go io.Copy(d.logFile, stdout)
-		go io.Copy(d.logFile, stderr)
+		go io.Copy(chromeDriver.logFile, stdout)
+		go io.Copy(chromeDriver.logFile, stderr)
 	} else {
 		go io.Copy(os.Stdout, stdout)
 		go io.Copy(os.Stderr, stderr)
 	}
-	if err = probePort(d.Port, d.StartTimeout); err != nil {
+	if err = probePort(chromeDriver.Port, chromeDriver.StartTimeout); err != nil {
+		fmt.Println("Error occured probing port: " + fmt.Sprint(chromeDriver.Port))
 		return err
 	}
 	return nil
 }
 
-func (d *ChromeDriver) Stop() error {
-	if d.cmd == nil {
+func (chromeDriver *ChromeDriver) Stop() error {
+	fmt.Println("Stopping chrome driver...")
+	if chromeDriver.cmd == nil {
 		return errors.New("stop failed: chromedriver not running")
 	}
 	defer func() {
-		d.cmd = nil
+		chromeDriver.cmd = nil
+		fmt.Println("Releasing port..")
+		freePortsQueue <- chromeDriver.Port
 	}()
-	d.cmd.Process.Signal(os.Interrupt)
-	if d.logFile != nil {
-		d.logFile.Close()
+	chromeDriver.cmd.Process.Kill()
+	chromeDriver.cmd.Process.Wait()
+	//chromeDriver.cmd.Process.Signal(os.Kill)
+	fmt.Println("Kill command sent")
+	
+	if chromeDriver.logFile != nil {
+		chromeDriver.logFile.Close()
 	}
+	
 	return nil
 }
 
-func (d *ChromeDriver) NewSession(desired, required Capabilities) (*Session, error) {
+func (chromeDriver *ChromeDriver) NewSession(desired, required Capabilities) (*Session, error) {
+	chromeMutex.Lock()
+	defer chromeMutex.Unlock()
 	//if we will want to support extenstions in the future, or other options it should be handled herein
-	if (d.Headless) {
+	if (chromeDriver.Headless) {
 		var chromeOptions ChromeOptions
-		chromeOptions.Args = []string{"--headless", "--disable-gpu"}
+		chromeOptions.Args = []string{"--headless", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"}
 		desired["chromeOptions"] = chromeOptions
 	}
-	session, err := d.newSession(desired, required)
+	session, err := chromeDriver.newSession(desired, required)
 	if err != nil {
 		return nil, err
 	}
-	session.wd = d
+	session.wd = chromeDriver
 	return session, nil
 }
 
-func (d *ChromeDriver) Sessions() ([]Session, error) {
-	sessions, err := d.sessions()
+func (chromeDriver *ChromeDriver) Sessions() ([]Session, error) {
+	sessions, err := chromeDriver.sessions()
 	if err != nil {
 		return nil, err
 	}
 	for i := range sessions {
-		sessions[i].wd = d
+		sessions[i].wd = chromeDriver
 	}
 	return sessions, nil
 }

@@ -1,10 +1,10 @@
 This package is a fork of @fedesog's version which is no longer maintained.
-The purpose of this fork is to add abilities which are missing in fedesog's version.
+The purpose of this fork is to add cabilities which are missing in fedesog's version.
 
 NEW CAPABILITIES
 ================
 - headless mode
-
+- Parallelism - running multipe webdrivers, each at its own indedendent instance, on a different port
 
 webdriver
 =========
@@ -29,14 +29,15 @@ Example:
 --------
 
     chromeDriver := webdriver.NewChromeDriver("/path/to/chromedriver")
-    //to enable headless mode:
-    chromeDriver.Headless = true
+    
     err := chromeDriver.Start()
     if err != nil {
     	log.Println(err)
     }
     desired := webdriver.Capabilities{"Platform": "Linux"}
     required := webdriver.Capabilities{}
+    //to enable headless mode:
+    chromeDriver.Headless = true
     session, err := chromeDriver.NewSession(desired, required)
     if err != nil {
     	log.Println(err)

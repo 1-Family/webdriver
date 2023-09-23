@@ -11,7 +11,7 @@ import (
 	"errors"
 	"io/ioutil"
 
-	//	"fmt"
+		"fmt"
 	//	"net/http"
 )
 
@@ -166,7 +166,9 @@ func (s Session) GetCapabilities() Capabilities {
 
 //Delete the session.
 func (s Session) Delete() error {
+	fmt.Println("Deleting session..")
 	_, _, err := s.wd.do(nil, "DELETE", "/session/%s", s.Id)
+	fmt.Println("After postring request to delete session")
 	return err
 }
 
