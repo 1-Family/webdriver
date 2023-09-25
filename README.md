@@ -4,7 +4,6 @@ The purpose of this fork is to add cabilities which are missing in fedesog's ver
 NEW CAPABILITIES
 ================
 - headless mode
-- Parallelism - running multipe webdrivers, each at its own indedendent instance, on a different port
 
 webdriver
 =========

@@ -44,9 +44,9 @@ type ChromeOptions struct {
 	Extensions []string `json:"extensions,omitempty"`
 }
 
-var initialized bool = false
-var freePortsQueue chan int
-var portsMutex sync.Mutex
+//var initialized bool = false
+//var freePortsQueue chan int
+//var portsMutex sync.Mutex
 const FIRST_PORT_NUMBER = 9500
 //we want to start chrome one by one, for chrome not to crash
 var chromeMutex sync.Mutex
@@ -56,9 +56,9 @@ var chromeMutex sync.Mutex
 //of valid-named switches is not validate and is passed as it is.
 //switch silent is removed (output is needed to check if chromedriver started correctly)
 //We want to support a number of chrome drivers running in parallel, so we create each time a new chrome driver
-func NewChromeDriver(path string, maxNumberOfWebdrivers int) ChromeDriver {
+func NewChromeDriver(path string, maxNumberOfWebdrivers int, headless bool) ChromeDriver {
 	fmt.Println("Requesting new session")
-	portsMutex.Lock()
+	/*portsMutex.Lock()
 	if !initialized {
 		initialized = true
 		freePortsQueue = make(chan int, maxNumberOfWebdrivers)
@@ -66,16 +66,16 @@ func NewChromeDriver(path string, maxNumberOfWebdrivers int) ChromeDriver {
 			freePortsQueue <- portNumber
 		}
 	}
-	portsMutex.Unlock()
+	portsMutex.Unlock()*/
 	chromeDriver := ChromeDriver{}
 	chromeDriver.path = path
-	chromeDriver.Port = <- freePortsQueue
+	//chromeDriver.Port = <- freePortsQueue
+	chromeDriver.Port = FIRST_PORT_NUMBER
 	fmt.Println("Recieved port")
 	chromeDriver.BaseUrl = ""
-	chromeDriver.Threads = 4
 	chromeDriver.LogPath = "chromedriver.log"
 	chromeDriver.StartTimeout = 20 * time.Second
-	chromeDriver.Headless = false
+	chromeDriver.Headless = headless
 
 	return chromeDriver
 }
@@ -85,8 +85,6 @@ var switchesFormat = "-port=%d -url-base=%s -log-path=%s -http-threads=%d"
 var cmdchan = make(chan error)
 
 func (chromeDriver *ChromeDriver) Start() error {
-	chromeMutex.Lock()
-	defer chromeMutex.Unlock()
 	fmt.Println("Starting new chrome driver")
 	csferr := "chromedriver start failed: "
 	if chromeDriver.cmd != nil {
@@ -150,7 +148,7 @@ func (chromeDriver *ChromeDriver) Stop() error {
 	defer func() {
 		chromeDriver.cmd = nil
 		fmt.Println("Releasing port..")
-		freePortsQueue <- chromeDriver.Port
+		//freePortsQueue <- chromeDriver.Port
 	}()
 	chromeDriver.cmd.Process.Kill()
 	chromeDriver.cmd.Process.Wait()
